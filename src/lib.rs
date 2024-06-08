@@ -1,18 +1,29 @@
+use core::marker::PhantomData;
+
+// Re-export the necessary crates
+pub use aead;
+pub use blake3;
+pub use chacha20;
+pub use cipher;
+pub use zeroize;
+
+// Use
 use aead::{
     consts::{U0, U12, U16, U24, U32},
     generic_array::{ArrayLength, GenericArray},
-    AeadCore, AeadInPlace, KeyInit, KeySizeUser,
+    AeadCore, AeadInPlace,
 };
 
-use blake3::Hasher;
-use chacha20::{
-    cipher::{KeyIvInit, StreamCipher, StreamCipherSeek},
-    ChaCha12, ChaCha20, ChaCha8, XChaCha12, XChaCha20, XChaCha8,
-};
-use core::marker::PhantomData;
+use chacha20::{ChaCha12, ChaCha20, ChaCha8, XChaCha12, XChaCha20, XChaCha8};
+
+use cipher::{KeyInit, KeyIvInit, KeySizeUser, StreamCipher, StreamCipherSeek};
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use blake3::Hasher as Blake3;
+
 const BLOCK_SIZE: u64 = 64;
+
 const MAX_BLOCKS: usize = core::u32::MAX as usize;
 
 pub type ChaCha8Blake3 = ChaChaBlake3<ChaCha8, U12>;
@@ -27,8 +38,12 @@ pub type XChaCha12Blake3 = ChaChaBlake3<XChaCha12, U24>;
 
 pub type XChaCha20Blake3 = ChaChaBlake3<XChaCha20, U24>;
 
-// Drop
-// key.as_mut_slice().zeroize()
+pub struct ChaChaBlake3<C, N: ArrayLength<u8> = U12> {
+    key: GenericArray<u8, U32>,
+    cipher: PhantomData<C>,
+    nonce_size: PhantomData<N>,
+}
+
 impl<C, N> Drop for ChaChaBlake3<C, N>
 where
     N: ArrayLength<u8>,
@@ -38,14 +53,7 @@ where
     }
 }
 
-// ZeroizeOnDrop
 impl<C, N> ZeroizeOnDrop for ChaChaBlake3<C, N> where N: ArrayLength<u8> {}
-
-pub struct ChaChaBlake3<C, N: ArrayLength<u8> = U12> {
-    key: GenericArray<u8, U32>,
-    cipher: PhantomData<C>,
-    nonce_size: PhantomData<N>,
-}
 
 impl<C, N> KeySizeUser for ChaChaBlake3<C, N>
 where
@@ -132,7 +140,7 @@ where
     }
 }
 
-fn new_cipher<C>(mut cipher: C) -> (C, blake3::Hasher)
+fn new_cipher<C>(mut cipher: C) -> (C, Blake3)
 where
     C: StreamCipher + StreamCipherSeek,
 {
@@ -140,7 +148,7 @@ where
 
     cipher.apply_keystream(&mut key);
 
-    let hasher = blake3::Hasher::new_keyed(&key);
+    let hasher = Blake3::new_keyed(&key);
     key.zeroize();
 
     cipher.seek(BLOCK_SIZE);
@@ -148,7 +156,7 @@ where
     (cipher, hasher)
 }
 
-fn mac_auth_len(hasher: &mut Hasher, aad: &[u8], buf: &[u8]) -> Result<(), aead::Error> {
+fn mac_auth_len(hasher: &mut Blake3, aad: &[u8], buf: &[u8]) -> Result<(), aead::Error> {
     let aad_len: u64 = aad.len().try_into().map_err(|_| aead::Error)?;
 
     let buf_len: u64 = buf.len().try_into().map_err(|_| aead::Error)?;
