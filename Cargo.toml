@@ -6,7 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aead = "0.5"
+aead = {version = "0.5", features = ["alloc", "heapless", "arrayvec"] }
 zeroize = "1.6"
 chacha20 = "0.9"
 blake3 = "1.4"
+cipher = "0.4.4"
+
+[features]
+alloc = ["aead/alloc"]
+arrayvec = ["aead/arrayvec"]
+heapless = ["aead/heapless"]
